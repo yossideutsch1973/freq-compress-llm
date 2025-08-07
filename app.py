@@ -1,12 +1,15 @@
 import os
+import io
 import torch
 import torch.nn as nn
 import numpy as np
 import gradio as gr
+import matplotlib.pyplot as plt
+from PIL import Image
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 # 📦 App version
-APP_VERSION = "v1.1"
+APP_VERSION = "v1.2"
 
 # Pull your HF token from env; set HF_TOKEN in GitHub Secrets or locally
 HF_TOKEN    = os.getenv("HF_TOKEN", None)
@@ -32,6 +35,26 @@ def generate(prompt, max_new_tokens, temperature, top_k):
     )
     return tok.decode(out[0], skip_special_tokens=True)
 
+
+def fft_preview(image: np.ndarray):
+    """Return FFT magnitude preview for an uploaded image."""
+    if image is None:
+        return None
+    # Convert to grayscale
+    gray = np.mean(image, axis=2)
+    # Compute FFT and shift to center
+    fshift = np.fft.fftshift(np.fft.fft2(gray))
+    magnitude = np.log(np.abs(fshift) + 1)
+    # Plot using matplotlib and return as PIL image
+    fig, ax = plt.subplots()
+    ax.imshow(magnitude, cmap="gray")
+    ax.axis("off")
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", bbox_inches="tight", pad_inches=0)
+    plt.close(fig)
+    buf.seek(0)
+    return Image.open(buf)
+
 def build_ui():
     with gr.Blocks() as demo:
         gr.Markdown(f"## 🧩 FFT Compression Playground ({APP_VERSION})")
@@ -45,6 +68,12 @@ def build_ui():
         btn.click(fn=generate,
                   inputs=[prompt, max_toks, temp, topk],
                   outputs=output)
+
+        gr.Markdown("### Image FFT Preview")
+        with gr.Row():
+            img_in = gr.Image(label="Input Image", type="numpy")
+            img_out = gr.Image(label="FFT Magnitude")
+        img_in.change(fn=fft_preview, inputs=img_in, outputs=img_out)
     return demo
 
 if __name__ == "__main__":
